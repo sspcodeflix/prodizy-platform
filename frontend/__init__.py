@@ -1,0 +1,3 @@
+"""
+Prodizy Platform Frontend Package
+"""
