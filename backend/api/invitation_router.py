@@ -13,12 +13,14 @@ router = APIRouter()
 
 class InvitationRequest(BaseModel):
     """Request model for validating invitation codes."""
+
     code: str
     session_id: str
 
 
 class InvitationResponse(BaseModel):
     """Response model for invitation code validation."""
+
     valid: bool
     message: str
     remaining_requests: Optional[int] = None
@@ -29,26 +31,23 @@ class InvitationResponse(BaseModel):
 async def validate_invitation_code(request: InvitationRequest):
     """
     Validate an invitation code for a session.
-    
+
     Args:
         request: The invitation code and session ID
-        
+
     Returns:
         Validation result with remaining requests if valid
     """
     result = invitation_store.validate_code(request.code, request.session_id)
-    
+
     # Convert to response model
-    response = InvitationResponse(
-        valid=result["valid"],
-        message=result["message"]
-    )
-    
+    response = InvitationResponse(valid=result["valid"], message=result["message"])
+
     # Add optional fields if valid
     if result["valid"]:
         response.remaining_requests = result["remaining_requests"]
         response.max_requests = result["max_requests"]
-    
+
     return response
 
 
@@ -56,13 +55,13 @@ async def validate_invitation_code(request: InvitationRequest):
 async def use_invitation_request(request: InvitationRequest):
     """
     Use a request from an invitation code's quota.
-    
+
     Args:
         request: The invitation code and session ID
-        
+
     Returns:
         Updated remaining requests
-        
+
     Raises:
         HTTPException: If the code is invalid or has no remaining requests
     """
@@ -75,7 +74,7 @@ async def use_invitation_request(request: InvitationRequest):
         valid=True,
         message=f"Request used successfully. {remaining} requests remaining.",
         remaining_requests=remaining,
-        max_requests=validation["max_requests"]
+        max_requests=validation["max_requests"],
     )
 
 

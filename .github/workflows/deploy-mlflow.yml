@@ -1,0 +1,55 @@
+name: Deploy MLflow
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [main]
+    paths:
+      - 'deployment/config/mlflow/**'
+      - 'deployment/config/systemd/prodizy-mlflow.service'
+      - 'deployment/scripts/deploy_mlflow.sh'
+      - '.github/workflows/deploy-mlflow.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh  # Ensure SSH directory exists
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Deploy MLflow to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Create MLflow directory if it doesn't exist
+            sudo mkdir -p /opt/mlflow
+            
+            # Create environment file
+            echo "MLFLOW_TRACKING_URI=http://127.0.0.1:5000" | sudo tee /opt/mlflow/.env > /dev/null
+            echo "MLFLOW_DEFAULT_ARTIFACT_ROOT=/opt/mlflow/artifacts" | sudo tee -a /opt/mlflow/.env > /dev/null
+            echo "MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow.db" | sudo tee -a /opt/mlflow/.env > /dev/null
+            
+            # Update repository
+            cd /opt/prodizy-platform
+            sudo git fetch
+            sudo git pull
+            
+            # Deploy MLflow
+            sudo chmod +x deployment/scripts/deploy_mlflow.sh
+            sudo bash deployment/scripts/deploy_mlflow.sh

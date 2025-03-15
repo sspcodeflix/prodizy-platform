@@ -126,8 +126,8 @@ prodizy/
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/sspcodeflix/prodizy.git
-   cd prodizy
+   git clone https://github.com/sspcodeflix/prodizy-platform.git
+   cd prodizy-platform
    ```
 
 2. Create and activate a virtual environment:

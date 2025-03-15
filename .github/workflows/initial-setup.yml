@@ -1,0 +1,100 @@
+name: Initial Server Setup for Amazon Linux
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Initial server setup
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Print system info for debugging
+            uname -a
+            
+            # Install necessary packages
+            sudo dnf install -y git python3-pip python3 nginx python3-certbot-nginx cronie
+            
+            # Start cron tab
+            sudo systemctl enable crond --now
+
+            # Create necessary directories
+            sudo mkdir -p /opt/prodizy-platform
+            sudo mkdir -p /opt/mlflow/artifacts
+            sudo mkdir -p /opt/prodizy-platform/frontend
+            sudo mkdir -p /opt/prodizy-platform/backend
+
+            # Handle existing repository
+            if [ -d "/opt/prodizy-platform/.git" ]; then
+              echo "Repository exists. Pulling latest changes..."
+              cd /opt/prodizy-platform
+              sudo git pull
+            else
+              echo "Removing non-git directory and cloning repository..."
+              sudo rm -rf /opt/prodizy-platform
+              sudo git clone https://github.com/${{ github.repository }} /opt/prodizy-platform
+            fi
+            
+            # Ensure deployment scripts directory exists
+            sudo mkdir -p /opt/prodizy-platform/deployment/scripts
+            
+            # Set permissions
+            sudo chown -R $(whoami):$(whoami) /opt/prodizy-platform
+            sudo mkdir -p /opt/mlflow
+            sudo chown -R $(whoami):$(whoami) /opt/mlflow
+
+            # Ensure database path for MLflow
+            cd /opt/mlflow
+            touch mlflow.db
+            chmod 644 mlflow.db
+
+            # Copy Nginx configuration files
+            echo "Copying Nginx configuration files..."
+            sudo cp /opt/prodizy-platform/deployment/config/nginx/api.conf /etc/nginx/conf.d/api.conf
+            sudo cp /opt/prodizy-platform/deployment/config/nginx/app.conf /etc/nginx/conf.d/app.conf
+            sudo cp /opt/prodizy-platform/deployment/config/nginx/mlflow.conf /etc/nginx/conf.d/mlflow.conf
+
+            # Ensure proper permissions for Nginx
+            sudo chmod 644 /etc/nginx/conf.d/*.conf
+
+            # Test and reload Nginx
+            echo "Testing Nginx configuration..."
+            sudo nginx -t && sudo systemctl restart nginx
+
+            # Setup SSL certificates using Certbot
+            echo "Requesting SSL certificates..."
+            sudo certbot --nginx -d api.sindle.online -d app.sindle.online -d mlflow.sindle.online --non-interactive --agree-tos -m admin@sindle.online
+
+            # Setup auto-renewal for SSL
+            echo "Setting up auto-renewal for SSL..."
+            sudo crontab -l | { cat; echo "0 2 * * * /usr/bin/certbot renew --quiet && systemctl reload nginx"; } | sudo crontab -
+
+            # Create deployment scripts if they don’t exist
+            for script in setup_server.sh deploy_frontend.sh deploy_backend.sh deploy_mlflow.sh; do
+              script_path="/opt/prodizy-platform/deployment/scripts/$script"
+              if [ ! -f "$script_path" ]; then
+                echo "#!/bin/bash" | sudo tee "$script_path"
+                echo "echo '${script%.*} deployment complete'" | sudo tee -a "$script_path"
+              fi
+            done
+
+            # Make scripts executable
+            sudo chmod +x /opt/prodizy-platform/deployment/scripts/*.sh
+            
+            echo "Initial server setup completed successfully"

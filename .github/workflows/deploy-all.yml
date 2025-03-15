@@ -1,0 +1,67 @@
+name: Deploy All
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh  # Ensure SSH directory exists
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Create directories if they don't exist
+            sudo mkdir -p /opt/prodizy-platform/frontend
+            sudo mkdir -p /opt/prodizy-platform/backend
+            
+            # Create environment files
+            echo "BACKEND_API_URL=${{ secrets.BACKEND_API_URL }}" | sudo tee /opt/prodizy-platform/frontend/.env > /dev/null
+            echo "DEFAULT_LLM_PROVIDER=${{ secrets.DEFAULT_LLM_PROVIDER }}" | sudo tee -a /opt/prodizy-platform/frontend/.env > /dev/null
+            echo "DEFAULT_LLM_MODEL=${{ secrets.DEFAULT_LLM_MODEL }}" | sudo tee -a /opt/prodizy-platform/frontend/.env > /dev/null
+            
+            echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" | sudo tee /opt/prodizy-platform/backend/.env > /dev/null
+            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" | sudo tee -a /opt/prodizy-platform/backend/.env > /dev/null
+            echo "MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}" | sudo tee -a /opt/prodizy-platform/backend/.env > /dev/null
+            
+            # Update repository
+            if [ ! -d "/opt/prodizy-platform/.git" ]; then
+              sudo git clone https://github.com/${{ github.repository }} /opt/prodizy-platform
+            else
+              sudo git config --global --add safe.directory /opt/prodizy-platform
+              cd /opt/prodizy-platform
+              sudo git fetch
+              sudo git reset --hard origin/main
+              sudo git pull
+            fi
+            
+            # Set permissions
+            sudo chown -R www-data:www-data /opt/prodizy-platform
+            
+            # Run deployment scripts
+            cd /opt/prodizy-platform
+            sudo chmod +x deployment/scripts/*.sh
+            sudo bash deployment/scripts/setup_server.sh
+            sudo bash deployment/scripts/deploy_backend.sh
+            sudo bash deployment/scripts/deploy_mlflow.sh

@@ -1,0 +1,57 @@
+name: Deploy Backend API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh  # Ensure SSH directory exists
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # Using root requirements file
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Create backend directory if it doesn't exist
+            sudo mkdir -p /opt/prodizy-platform/backend
+            
+            # Create environment file
+            echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" | sudo tee /opt/prodizy-platform/backend/.env > /dev/null
+            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" | sudo tee -a /opt/prodizy-platform/backend/.env > /dev/null
+            echo "MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}" | sudo tee -a /opt/prodizy-platform/backend/.env > /dev/null
+            
+            # Update repository
+            cd /opt/prodizy-platform
+            sudo git fetch
+            sudo git pull
+            
+            # Deploy backend
+            sudo chmod +x deployment/scripts/deploy_backend.sh
+            sudo bash deployment/scripts/deploy_backend.sh

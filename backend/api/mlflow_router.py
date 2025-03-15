@@ -12,12 +12,16 @@ import requests
 from backend.models.chat import ChatRequest, ChatResponse
 from backend.models.invitation import invitation_store
 from backend.utils.session_store import (
-    get_conversation_history, 
+    get_conversation_history,
     append_to_conversation,
     get_session_data,
-    set_session_data
+    set_session_data,
 )
-from backend.core.services.llm_service import generate_chat_response, get_available_providers, get_provider_models
+from backend.core.services.llm_service import (
+    generate_chat_response,
+    get_available_providers,
+    get_provider_models,
+)
 from backend.core.services.mlflow_service import (
     get_experiment_id_by_name,
     create_experiment,
@@ -37,23 +41,27 @@ from backend.core.services.mlflow_service import (
     get_runs_with_model_info,
     get_recently_used_models,
     batch_create_experiments,
-    batch_create_runs
+    batch_create_runs,
 )
 from backend.core.config import settings
 
 # Create API router
 router = APIRouter()
 
+
 # Models for LLM-related endpoints
 class ProviderModelRequest(BaseModel):
     provider_id: str
     invitation_code: str
 
+
 class LLMProviderInfo(BaseModel):
     providers: List[Dict[str, Any]]
 
+
 class LLMModelsInfo(BaseModel):
     models: List[Dict[str, Any]]
+
 
 # Add provider/model endpoints
 @router.get("/providers", response_model=LLMProviderInfo)
@@ -61,17 +69,21 @@ async def list_llm_providers():
     """Get a list of available LLM providers."""
     return {"providers": get_available_providers()}
 
+
 @router.post("/provider-models", response_model=LLMModelsInfo)
 async def get_models_for_provider(request: ProviderModelRequest):
     """Get available models for a specific provider."""
     # Validate the invitation code
-    validation = invitation_store.validate_code(request.invitation_code, "model-listing")
+    validation = invitation_store.validate_code(
+        request.invitation_code, "model-listing"
+    )
     if not validation["valid"]:
         raise HTTPException(status_code=403, detail=validation["message"])
-    
+
     # Get the models for the requested provider
     models = get_provider_models(request.provider_id)
     return {"models": models}
+
 
 @router.post("/mlflow", response_model=ChatResponse)
 async def chatbot_mlflow(request: ChatRequest) -> ChatResponse:
@@ -103,10 +115,11 @@ async def chatbot_mlflow(request: ChatRequest) -> ChatResponse:
         parsed_response = {
             "intent": "error",
             "confirmation": "needs_clarification",
-            "message": f"Invitation code error: {validation['message']} Please contact hey@prodizy.in to request a new invitation code."
+            "message": f"Invitation code error: {validation['message']} \
+            Please contact hey@prodizyplatform.in to request a new invitation code.",
         }
         return {"assistant_response": parsed_response}
-    
+
     # --------------------------------------------------------
     # 3) Access conversation history & Append user message
     # --------------------------------------------------------
@@ -245,11 +258,21 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     # 6) Get LLM provider settings from session data
     # --------------------------------------------------------
     sdata = get_session_data(session_id)
-    
+
     # Get LLM provider settings from session data or use defaults
-    provider_id = sdata.get("llm_provider_id", request.cached_intent.get("llm_provider_id", "openai") if request.cached_intent else "openai")
-    model_id = sdata.get("llm_model_id", request.cached_intent.get("llm_model_id", "gpt-4o") if request.cached_intent else "gpt-4o")
-    
+    provider_id = sdata.get(
+        "llm_provider_id",
+        request.cached_intent.get("llm_provider_id", "openai")
+        if request.cached_intent
+        else "openai",
+    )
+    model_id = sdata.get(
+        "llm_model_id",
+        request.cached_intent.get("llm_model_id", "gpt-4o")
+        if request.cached_intent
+        else "gpt-4o",
+    )
+
     # Store remaining requests in session data
     remaining_requests = validation["remaining_requests"]
     max_requests = validation["max_requests"]
@@ -265,14 +288,14 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
             messages=messages,
             provider_id=provider_id,
             model_id=model_id,
-            temperature=0.0
+            temperature=0.0,
         )
         print(f"[DEBUG] LLM raw_response:\n{raw_response}\n")  # (DEBUG)
     except Exception as e:
         parsed_response = {
             "intent": "error",
             "confirmation": "needs_clarification",
-            "message": f"Error accessing LLM: {str(e)}"
+            "message": f"Error accessing LLM: {str(e)}",
         }
         return {"assistant_response": parsed_response}
 
@@ -294,7 +317,7 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
         parsed_response = {
             "intent": "unknown",
             "confirmation": "needs_clarification",
-            "message": f"Failed to parse JSON: {raw_response}"
+            "message": f"Failed to parse JSON: {raw_response}",
         }
         return {"assistant_response": parsed_response}
 
@@ -305,17 +328,21 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     # --------------------------------------------------------
     # 10) Intent Handling
     # --------------------------------------------------------
-    
+
     # --------------- create_experiment ---------------
     if intent == "create_experiment" and confirmation == "confirmed":
         experiment_name = entities.get("experiment_name")
         if not experiment_name:
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "Please provide an experiment name. For example: 'my_experiment'."
+            parsed_response["message"] = (
+                "Please provide an experiment name. For example: 'my_experiment'."
+            )
         else:
             success, result = create_experiment(experiment_name)
             if success:
-                parsed_response["message"] = f"✅ Experiment '{experiment_name}' created with ID: {result}."
+                parsed_response["message"] = (
+                    f"✅ Experiment '{experiment_name}' created with ID: {result}."
+                )
             else:
                 parsed_response["confirmation"] = "needs_clarification"
                 parsed_response["message"] = f"❌ Failed to create experiment: {result}"
@@ -334,7 +361,9 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
             exp_success, exp_result = create_experiment(experiment_name)
             if not exp_success:
                 parsed_response["confirmation"] = "needs_clarification"
-                parsed_response["message"] = f"❌ Failed to create experiment: {exp_result}"
+                parsed_response["message"] = (
+                    f"❌ Failed to create experiment: {exp_result}"
+                )
             else:
                 experiment_id = exp_result
                 run_success, run_msg, run_id = create_run(experiment_id, run_name)
@@ -347,7 +376,9 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                     set_session_data(session_id, "current_run_id", run_id)
                 else:
                     parsed_response["confirmation"] = "needs_clarification"
-                    parsed_response["message"] = f"❌ Created experiment but failed to start run: {run_msg}"
+                    parsed_response["message"] = (
+                        f"❌ Created experiment but failed to start run: {run_msg}"
+                    )
 
     # --------------- create_run ---------------
     elif intent == "create_run" and confirmation == "confirmed":
@@ -413,11 +444,13 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                     parsed_response["message"] = f"✅ {del_msg}"
                 else:
                     parsed_response["confirmation"] = "needs_clarification"
-                    parsed_response["message"] = f"❌ Failed to delete experiment: {del_msg}"
+                    parsed_response["message"] = (
+                        f"❌ Failed to delete experiment: {del_msg}"
+                    )
 
     # --------------- delete_run ---------------
     elif intent == "delete_run" and confirmation == "confirmed":
-        # The user must pass a run_id. 
+        # The user must pass a run_id.
         run_id = entities.get("run_id")
 
         if not run_id:
@@ -476,9 +509,11 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
         run_id = entities.get("run_id")
 
         # Accept "metric_key", "metric_name", or "key" for the metric name
-        metric_key = (entities.get("metric_key") or 
-                      entities.get("metric_name") or
-                      entities.get("key"))
+        metric_key = (
+            entities.get("metric_key")
+            or entities.get("metric_name")
+            or entities.get("key")
+        )
         # Accept "metric_value" or "value"
         metric_value = entities.get("metric_value", entities.get("value"))
         step = entities.get("step", 0)
@@ -498,7 +533,9 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
 
         if not metric_key:
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "We need the metric name/key (e.g. 'accuracy')."
+            parsed_response["message"] = (
+                "We need the metric name/key (e.g. 'accuracy')."
+            )
         elif metric_value is None:
             parsed_response["confirmation"] = "needs_clarification"
             parsed_response["message"] = "We need a metric value (e.g. '0.95')."
@@ -522,48 +559,58 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     elif intent == "get_experiment_details" and confirmation == "confirmed":
         experiment_id = entities.get("experiment_id")
         experiment_name = entities.get("experiment_name")
-        
-        print(f"[DEBUG] Processing get_experiment_details intent with entities: {entities}")
-        
+
+        print(
+            f"[DEBUG] Processing get_experiment_details intent with entities: {entities}"
+        )
+
         # Handle case where no identifier is provided
         if not experiment_id and not experiment_name:
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "Please provide an experiment name or ID to get details."
+            parsed_response["message"] = (
+                "Please provide an experiment name or ID to get details."
+            )
             return {"assistant_response": parsed_response}
-        
+
         # Try name-based lookup first if provided
         if experiment_name:
             print(f"[DEBUG] Looking up experiment ID for name: '{experiment_name}'")
             found_id = get_experiment_id_by_name(experiment_name)
-            
+
             if found_id:
                 print(f"[DEBUG] Resolved name '{experiment_name}' to ID: {found_id}")
                 experiment_id = found_id
             else:
-                print(f"[DEBUG] Failed to find experiment with name: '{experiment_name}'")
-                
+                print(
+                    f"[DEBUG] Failed to find experiment with name: '{experiment_name}'"
+                )
+
                 # Try to list available experiments to help the user
                 try:
                     list_url = f"{settings.MLFLOW_TRACKING_URI}/api/2.0/mlflow/experiments/list"
                     list_res = requests.get(list_url, timeout=10)
-                    
+
                     if list_res.ok:
                         experiments = list_res.json().get("experiments", [])
                         if experiments:
                             # Show first few experiment names
-                            exp_names = [f"'{exp.get('name')}'" for exp in experiments[:5]]
+                            exp_names = [
+                                f"'{exp.get('name')}'" for exp in experiments[:5]
+                            ]
                             exp_list = ", ".join(exp_names)
-                            
+
                             if len(experiments) > 5:
                                 exp_list += f", and {len(experiments) - 5} more"
-                            
+
                             parsed_response["confirmation"] = "needs_clarification"
                             parsed_response["message"] = (
                                 f"❌ Experiment '{experiment_name}' not found. Available experiments include: {exp_list}"
                             )
                         else:
                             parsed_response["confirmation"] = "needs_clarification"
-                            parsed_response["message"] = "❌ No experiments found in MLflow."
+                            parsed_response["message"] = (
+                                "❌ No experiments found in MLflow."
+                            )
                     else:
                         parsed_response["confirmation"] = "needs_clarification"
                         parsed_response["message"] = (
@@ -571,35 +618,41 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                         )
                 except Exception as e:
                     parsed_response["confirmation"] = "needs_clarification"
-                    parsed_response["message"] = f"❌ Error listing experiments: {str(e)}"
-                
+                    parsed_response["message"] = (
+                        f"❌ Error listing experiments: {str(e)}"
+                    )
+
                 return {"assistant_response": parsed_response}
-        
+
         # At this point, we should have an experiment_id
         if not experiment_id:
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "❌ Could not determine experiment ID from the provided information."
+            parsed_response["message"] = (
+                "❌ Could not determine experiment ID from the provided information."
+            )
             return {"assistant_response": parsed_response}
-        
+
         # Get the details using the ID
         print(f"[DEBUG] Getting details for experiment ID: {experiment_id}")
         success, msg, exp_details = get_experiment_by_id(experiment_id)
-        
+
         if success and exp_details:
             name = exp_details.get("name", "Unknown")
             lifecycle_stage = exp_details.get("lifecycle_stage", "Unknown")
             artifact_location = exp_details.get("artifact_location", "Unknown")
-            
+
             # Get creation time if available
             creation_time = exp_details.get("creation_time")
             time_str = "Unknown"
             if creation_time:
-                time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(creation_time)/1000))
-            
+                time_str = time.strftime(
+                    "%Y-%m-%d %H:%M:%S", time.localtime(int(creation_time) / 1000)
+                )
+
             # Get run count for this experiment
             run_success, _, runs = list_runs(experiment_id)
             run_count = len(runs) if run_success else "Unknown"
-            
+
             # Format the experiment details
             parsed_response["message"] = (
                 f"📋 Experiment Details: {name}\n\n"
@@ -617,30 +670,34 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     elif intent == "list_runs" and confirmation == "confirmed":
         experiment_id = entities.get("experiment_id")
         experiment_name = entities.get("experiment_name")
-        
+
         if not experiment_id and not experiment_name:
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "Please provide either an experiment ID or name to list runs for."
+            parsed_response["message"] = (
+                "Please provide either an experiment ID or name to list runs for."
+            )
             return {"assistant_response": parsed_response}
-        
+
         # Resolve experiment ID if only name provided
         if not experiment_id and experiment_name:
             found_id = get_experiment_id_by_name(experiment_name)
             if not found_id:
                 parsed_response["confirmation"] = "needs_clarification"
-                parsed_response["message"] = f"No experiment found named '{experiment_name}'."
+                parsed_response["message"] = (
+                    f"No experiment found named '{experiment_name}'."
+                )
                 return {"assistant_response": parsed_response}
             experiment_id = found_id
-        
+
         success, msg, runs = list_runs(experiment_id)
-        
+
         if success and runs:
             # Get experiment name for context
             exp_name = "Unknown"
             exp_success, _, exp_details = get_experiment_by_id(experiment_id)
             if exp_success:
                 exp_name = exp_details.get("name", "Unknown")
-                
+
             # Prepare a formatted list of runs
             run_list = []
             for i, run in enumerate(runs[:20], 1):  # Show up to 20 runs
@@ -648,13 +705,13 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                 run_id = run_info.get("run_id", "Unknown")
                 run_name = run_info.get("run_name", "Unnamed run")
                 status = run_info.get("status", "Unknown")
-                
+
                 # Get start time
                 start_time = run_info.get("start_time")
                 time_str = ""
                 if start_time:
-                    time_str = f", Started: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(start_time)/1000))}"
-                
+                    time_str = f", Started: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(start_time) / 1000))}"
+
                 # Get metrics if available
                 metrics = run.get("data", {}).get("metrics", {})
                 metrics_str = ""
@@ -663,24 +720,30 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                     top_metrics = list(metrics.items())[:3]
                     metrics_str = ", ".join([f"{k}: {v}" for k, v in top_metrics])
                     metrics_str = f", Metrics: {metrics_str}"
-                    
+
                     # Indicate if there are more metrics
                     if len(metrics) > 3:
                         metrics_str += f" and {len(metrics) - 3} more"
-                
+
                 # Format the run info
-                run_list.append(f"{i}. {run_name} (ID: {run_id[:8]}...{run_id[-4:]}, Status: {status}{time_str}{metrics_str})")
-            
+                run_list.append(
+                    f"{i}. {run_name} (ID: {run_id[:8]}...{run_id[-4:]}, Status: {status}{time_str}{metrics_str})"
+                )
+
             # Join the run list with newlines
             formatted_list = "\n".join(run_list)
-            
+
             # Add a note if there are more runs
             if len(runs) > 20:
                 formatted_list += f"\n\n...and {len(runs) - 20} more runs."
-                
-            parsed_response["message"] = f"📋 Found {len(runs)} runs for experiment '{exp_name}':\n\n{formatted_list}"
+
+            parsed_response["message"] = (
+                f"📋 Found {len(runs)} runs for experiment '{exp_name}':\n\n{formatted_list}"
+            )
         elif success:
-            parsed_response["message"] = f"No runs found for experiment ID {experiment_id}."
+            parsed_response["message"] = (
+                f"No runs found for experiment ID {experiment_id}."
+            )
         else:
             parsed_response["confirmation"] = "needs_clarification"
             parsed_response["message"] = f"❌ {msg}"
@@ -688,34 +751,40 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     # --------------- list_experiments ---------------
     elif intent == "list_experiments" and confirmation == "confirmed":
         success, msg, experiments = list_experiments()
-        
+
         if success and experiments:
             # Prepare a formatted list of experiments
             exp_list = []
             for i, exp in enumerate(experiments[:20], 1):  # Show up to 20 experiments
                 name = exp.get("name", "Unnamed")
                 exp_id = exp.get("experiment_id", "Unknown")
-                
+
                 # Get creation time if available (might not be in all MLflow versions)
                 creation_time = exp.get("creation_time")
                 time_str = ""
                 if creation_time:
-                    time_str = f", Created: {time.strftime('%Y-%m-%d', time.localtime(int(creation_time)/1000))}"
-                
+                    time_str = f", Created: {time.strftime('%Y-%m-%d', time.localtime(int(creation_time) / 1000))}"
+
                 # Get lifecycle stage
                 lifecycle = exp.get("lifecycle_stage", "Unknown")
-                
+
                 # Format the experiment info
-                exp_list.append(f"{i}. {name} (ID: {exp_id}{time_str}, Status: {lifecycle})")
-            
+                exp_list.append(
+                    f"{i}. {name} (ID: {exp_id}{time_str}, Status: {lifecycle})"
+                )
+
             # Join the experiment list with newlines
             formatted_list = "\n".join(exp_list)
-            
+
             # Add a note if there are more experiments
             if len(experiments) > 20:
-                formatted_list += f"\n\n...and {len(experiments) - 20} more experiments."
-                
-            parsed_response["message"] = f"📋 Found {len(experiments)} experiments:\n\n{formatted_list}"
+                formatted_list += (
+                    f"\n\n...and {len(experiments) - 20} more experiments."
+                )
+
+            parsed_response["message"] = (
+                f"📋 Found {len(experiments)} experiments:\n\n{formatted_list}"
+            )
         elif success:
             parsed_response["message"] = "No experiments found in MLflow."
         else:
@@ -725,10 +794,12 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
         # --------------- get_mlflow_summary ---------------
     elif intent == "get_mlflow_summary" and confirmation == "confirmed":
         summary = get_mlflow_summary_stats()
-        
+
         if "error" in summary:
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = f"❌ Error retrieving MLflow summary: {summary['error']}"
+            parsed_response["message"] = (
+                f"❌ Error retrieving MLflow summary: {summary['error']}"
+            )
         else:
             # Format a nice summary message
             parsed_response["message"] = (
@@ -740,24 +811,32 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                 f"• Data as of: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(summary['timestamp']))}"
             )
 
-# --------------- get_model_versions ---------------
+    # --------------- get_model_versions ---------------
     elif intent == "get_model_versions" and confirmation == "confirmed":
         model_name = entities.get("model_name")
-        
+
         # If there's no model_name but there's a message that appears to be an informational response
-        if not model_name and "message" in parsed_response and len(parsed_response["message"]) > 20:
+        if (
+            not model_name
+            and "message" in parsed_response
+            and len(parsed_response["message"]) > 20
+        ):
             # This is likely a general information response, just pass it through
             # (The message length check helps distinguish between actual answers and placeholder messages)
-            print(f"[DEBUG] Passing through informational response: {parsed_response['message'][:50]}...")
+            print(
+                f"[DEBUG] Passing through informational response: {parsed_response['message'][:50]}..."
+            )
             # No modifications needed to parsed_response, just use the LLM's message
         elif not model_name:
             # No model name and no informational message, ask for clarification
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "Please provide a model name to get versions for."
+            parsed_response["message"] = (
+                "Please provide a model name to get versions for."
+            )
         else:
             # Normal flow when a model name is provided
             success, msg, versions = get_model_versions(model_name)
-            
+
             if success and versions:
                 # Format model versions into readable output
                 versions_text = ""
@@ -766,23 +845,25 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                     status = v.get("current_stage", "Unknown")
                     user = v.get("user_id", "Unknown")
                     created = time.strftime(
-                        '%Y-%m-%d %H:%M:%S', 
-                        time.localtime(int(v.get("creation_timestamp", 0)/1000))
+                        "%Y-%m-%d %H:%M:%S",
+                        time.localtime(int(v.get("creation_timestamp", 0) / 1000)),
                     )
                     run_id = v.get("run_id", "Unknown")
-                    
+
                     versions_text += (
                         f"• Version {version_num} (Status: {status})\n"
                         f"  - Created by: {user}\n"
                         f"  - Created on: {created}\n"
                         f"  - Run ID: {run_id}\n"
                     )
-                
+
                 parsed_response["message"] = (
                     f"📋 Versions for model '{model_name}':\n\n{versions_text}"
                 )
             elif success:
-                parsed_response["message"] = f"No versions found for model '{model_name}'."
+                parsed_response["message"] = (
+                    f"No versions found for model '{model_name}'."
+                )
             else:
                 parsed_response["confirmation"] = "needs_clarification"
                 parsed_response["message"] = f"❌ {msg}"
@@ -791,32 +872,38 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     elif intent == "get_model_details" and confirmation == "confirmed":
         model_name = entities.get("model_name")
         version = entities.get("version")
-        
+
         if not model_name:
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "Please provide a model name to get details for."
+            parsed_response["message"] = (
+                "Please provide a model name to get details for."
+            )
         else:
             success, msg, details = get_model_details(model_name, version)
-            
+
             if success and details:
                 version_num = details.get("version", "Unknown")
                 status = details.get("current_stage", "Unknown")
                 user = details.get("user_id", "Unknown")
                 created = time.strftime(
-                    '%Y-%m-%d %H:%M:%S', 
-                    time.localtime(int(details.get("creation_timestamp", 0)/1000))
+                    "%Y-%m-%d %H:%M:%S",
+                    time.localtime(int(details.get("creation_timestamp", 0) / 1000)),
                 )
                 run_id = details.get("run_id", "Unknown")
                 source = details.get("source", "Unknown")
-                
+
                 # Get experiment name for this run
-                exp_id = details.get("run", {}).get("info", {}).get("experiment_id", "Unknown")
+                exp_id = (
+                    details.get("run", {})
+                    .get("info", {})
+                    .get("experiment_id", "Unknown")
+                )
                 exp_name = "Unknown"
                 if exp_id != "Unknown":
                     exp_success, _, exp_details = get_experiment_by_id(exp_id)
                     if exp_success:
                         exp_name = exp_details.get("name", "Unknown")
-                
+
                 parsed_response["message"] = (
                     f"📦 Model: {model_name} (Version {version_num})\n\n"
                     f"• Status: {status}\n"
@@ -827,7 +914,9 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                     f"• Artifact Location: {source}\n"
                 )
             elif success:
-                parsed_response["message"] = f"No details found for model '{model_name}'."
+                parsed_response["message"] = (
+                    f"No details found for model '{model_name}'."
+                )
             else:
                 parsed_response["confirmation"] = "needs_clarification"
                 parsed_response["message"] = f"❌ {msg}"
@@ -835,7 +924,7 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     # --------------- get_recent_models ---------------
     elif intent == "get_recent_models" and confirmation == "confirmed":
         limit = entities.get("limit", 5)
-        
+
         # Validate limit is reasonable
         try:
             limit = int(limit)
@@ -843,36 +932,34 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                 limit = 5
         except (ValueError, TypeError):
             limit = 5
-        
+
         success, msg, recent_models = get_recently_updated_models(limit)
-        
+
         if success and recent_models:
             models_text = ""
             for i, model in enumerate(recent_models, 1):
                 name = model.get("name", "Unknown")
                 last_updated = time.strftime(
-                    '%Y-%m-%d %H:%M:%S', 
-                    time.localtime(int(model.get("last_updated_timestamp", 0)/1000))
+                    "%Y-%m-%d %H:%M:%S",
+                    time.localtime(int(model.get("last_updated_timestamp", 0) / 1000)),
                 )
-                
+
                 # Get latest version
                 version_success, _, versions = get_model_versions(name)
                 latest_version = "Unknown"
                 if version_success and versions:
                     sorted_versions = sorted(
-                        versions,
-                        key=lambda v: int(v.get("version", 0)),
-                        reverse=True
+                        versions, key=lambda v: int(v.get("version", 0)), reverse=True
                     )
                     if sorted_versions:
                         latest_version = sorted_versions[0].get("version", "Unknown")
-                
+
                 models_text += (
                     f"{i}. {name}\n"
                     f"   • Last Updated: {last_updated}\n"
                     f"   • Latest Version: {latest_version}\n"
                 )
-            
+
             parsed_response["message"] = (
                 f"🔄 Top {len(recent_models)} Recently Updated Models:\n\n{models_text}"
             )
@@ -885,19 +972,30 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     # --------------- batch_create_experiments ---------------
     elif intent == "batch_create_experiments" and confirmation == "confirmed":
         experiment_names = entities.get("experiment_names", [])
-        
-        if not experiment_names or not isinstance(experiment_names, list) or len(experiment_names) == 0:
+
+        if (
+            not experiment_names
+            or not isinstance(experiment_names, list)
+            or len(experiment_names) == 0
+        ):
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "Please provide a list of experiment names to create."
+            parsed_response["message"] = (
+                "Please provide a list of experiment names to create."
+            )
         else:
             results = batch_create_experiments(experiment_names)
-            
+
             # Count successful creations
             successful = sum(1 for r in results if r["success"])
-            
+
             if successful == len(experiment_names):
                 exp_ids = [r["result"] for r in results if r["success"]]
-                exp_list = "\n".join([f"• {name} (ID: {id})" for name, id in zip(experiment_names, exp_ids)])
+                exp_list = "\n".join(
+                    [
+                        f"• {name} (ID: {id})"
+                        for name, id in zip(experiment_names, exp_ids)
+                    ]
+                )
                 parsed_response["message"] = (
                     f"✅ Successfully created all {len(experiment_names)} experiments:\n\n{exp_list}"
                 )
@@ -907,17 +1005,17 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                 # Create a list of successful and failed creations
                 success_list = []
                 failed_list = []
-                
+
                 for result in results:
                     name = result["experiment_name"]
                     if result["success"]:
                         success_list.append(f"• {name} (ID: {result['result']})")
                     else:
                         failed_list.append(f"• {name} (Error: {result['result']})")
-                
+
                 success_text = "\n".join(success_list)
                 failed_text = "\n".join(failed_list)
-                
+
                 parsed_response["message"] = (
                     f"⚠️ Created {successful} out of {len(experiment_names)} experiments.\n\n"
                     f"Successful:\n{success_text}\n\n"
@@ -931,27 +1029,33 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     elif intent == "get_models_with_artifacts" and confirmation == "confirmed":
         experiment_id = entities.get("experiment_id")
         experiment_name = entities.get("experiment_name")
-        
+
         if not experiment_id and not experiment_name:
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "Please provide either an experiment ID or name to find models."
+            parsed_response["message"] = (
+                "Please provide either an experiment ID or name to find models."
+            )
             return {"assistant_response": parsed_response}
-        
+
         # Resolve experiment ID if only name provided
         if not experiment_id and experiment_name:
             found_id = get_experiment_id_by_name(experiment_name)
             if not found_id:
                 parsed_response["confirmation"] = "needs_clarification"
-                parsed_response["message"] = f"No experiment found named '{experiment_name}'."
+                parsed_response["message"] = (
+                    f"No experiment found named '{experiment_name}'."
+                )
                 return {"assistant_response": parsed_response}
             experiment_id = found_id
-        
+
         success, msg, runs = get_runs_with_model_info(experiment_id)
-        
+
         if success:
             # Filter runs with models
-            runs_with_models = [r for r in runs if r.get("model_info", {}).get("has_model", False)]
-            
+            runs_with_models = [
+                r for r in runs if r.get("model_info", {}).get("has_model", False)
+            ]
+
             if runs_with_models:
                 runs_text = ""
                 for i, run in enumerate(runs_with_models[:10], 1):
@@ -960,31 +1064,37 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                     run_name = run_info.get("run_name", "Unnamed run")
                     status = run_info.get("status", "Unknown")
                     start_time = time.strftime(
-                        '%Y-%m-%d %H:%M:%S', 
-                        time.localtime(int(run_info.get("start_time", 0)/1000))
+                        "%Y-%m-%d %H:%M:%S",
+                        time.localtime(int(run_info.get("start_time", 0) / 1000)),
                     )
-                    
+
                     artifact_paths = [
-                        a.get("path", "Unknown") 
+                        a.get("path", "Unknown")
                         for a in run.get("model_info", {}).get("model_artifacts", [])
                     ]
-                    artifact_text = "\n      ".join(artifact_paths) or "No specific paths found"
-                    
+                    artifact_text = (
+                        "\n      ".join(artifact_paths) or "No specific paths found"
+                    )
+
                     runs_text += (
                         f"{i}. {run_name} (ID: {run_id[:8]}...)\n"
                         f"   • Status: {status}\n"
                         f"   • Started: {start_time}\n"
                         f"   • Model Artifacts:\n      {artifact_text}\n"
                     )
-                
+
                 if len(runs_with_models) > 10:
-                    runs_text += f"\n...and {len(runs_with_models) - 10} more runs with models."
-                
+                    runs_text += (
+                        f"\n...and {len(runs_with_models) - 10} more runs with models."
+                    )
+
                 parsed_response["message"] = (
                     f"🔍 Found {len(runs_with_models)} runs with models in experiment {experiment_id}:\n\n{runs_text}"
                 )
             else:
-                parsed_response["message"] = f"No runs with logged models found in experiment {experiment_id}."
+                parsed_response["message"] = (
+                    f"No runs with logged models found in experiment {experiment_id}."
+                )
         else:
             parsed_response["confirmation"] = "needs_clarification"
             parsed_response["message"] = f"❌ {msg}"
@@ -992,7 +1102,7 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
         # --------------- get_recently_used_models ---------------
     elif intent == "get_recently_used_models" and confirmation == "confirmed":
         limit = entities.get("limit", 5)
-        
+
         # Validate limit
         try:
             limit = int(limit)
@@ -1000,33 +1110,39 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                 limit = 5
         except (ValueError, TypeError):
             limit = 5
-        
+
         success, msg, recent_models = get_recently_used_models(limit)
-        
+
         if success and recent_models:
             models_text = ""
             for i, model in enumerate(recent_models, 1):
                 name = model.get("name", "Unknown")
                 recent_runs = model.get("recent_runs", [])
-                
+
                 # Format timestamp of most recent use
                 latest_timestamp = model.get("latest_timestamp", 0)
-                latest_time = time.strftime(
-                    '%Y-%m-%d %H:%M:%S', 
-                    time.localtime(int(latest_timestamp/1000))
-                ) if latest_timestamp else "Unknown"
-                
+                latest_time = (
+                    time.strftime(
+                        "%Y-%m-%d %H:%M:%S",
+                        time.localtime(int(latest_timestamp / 1000)),
+                    )
+                    if latest_timestamp
+                    else "Unknown"
+                )
+
                 # Get versions used
-                versions = set(run.get("version") for run in recent_runs if run.get("version"))
+                versions = set(
+                    run.get("version") for run in recent_runs if run.get("version")
+                )
                 versions_text = ", ".join(sorted(versions)) if versions else "Unknown"
-                
+
                 models_text += (
                     f"{i}. {name}\n"
                     f"   • Last Used: {latest_time}\n"
                     f"   • Versions Used: {versions_text}\n"
                     f"   • Recent Usage Count: {len(recent_runs)}\n"
                 )
-            
+
             parsed_response["message"] = (
                 f"🔄 Top {len(recent_models)} Recently Used Models:\n\n{models_text}"
             )
@@ -1039,31 +1155,29 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
     # --------------- get_registered_models ---------------
     elif intent == "get_registered_models" and confirmation == "confirmed":
         success, msg, models = get_registered_models()
-        
+
         if success and models:
             # Prepare a formatted list of models
             model_list = []
             for i, model in enumerate(models[:20], 1):  # Show up to 20 models
                 name = model.get("name", "Unnamed")
-                
+
                 # Get latest version if available
                 latest_version = "Unknown"
                 version_success, _, versions = get_model_versions(name)
                 if version_success and versions:
                     sorted_versions = sorted(
-                        versions,
-                        key=lambda v: int(v.get("version", 0)),
-                        reverse=True
+                        versions, key=lambda v: int(v.get("version", 0)), reverse=True
                     )
                     if sorted_versions:
                         latest_version = sorted_versions[0].get("version", "Unknown")
-                
+
                 # Get last updated timestamp
                 last_updated = model.get("last_updated_timestamp")
                 time_str = ""
                 if last_updated:
-                    time_str = f", Updated: {time.strftime('%Y-%m-%d', time.localtime(int(last_updated)/1000))}"
-                
+                    time_str = f", Updated: {time.strftime('%Y-%m-%d', time.localtime(int(last_updated) / 1000))}"
+
                 # Get stages if available
                 stages = set()
                 if version_success and versions:
@@ -1074,18 +1188,22 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                 stages_str = ""
                 if stages:
                     stages_str = f", Stages: {', '.join(sorted(stages))}"
-                
+
                 # Format the model info
-                model_list.append(f"{i}. {name} (Latest version: {latest_version}{time_str}{stages_str})")
-            
+                model_list.append(
+                    f"{i}. {name} (Latest version: {latest_version}{time_str}{stages_str})"
+                )
+
             # Join the model list with newlines
             formatted_list = "\n".join(model_list)
-            
+
             # Add a note if there are more models
             if len(models) > 20:
                 formatted_list += f"\n\n...and {len(models) - 20} more models."
-                
-            parsed_response["message"] = f"📋 Found {len(models)} registered models:\n\n{formatted_list}"
+
+            parsed_response["message"] = (
+                f"📋 Found {len(models)} registered models:\n\n{formatted_list}"
+            )
         elif success:
             parsed_response["message"] = "No registered models found in MLflow."
         else:
@@ -1097,39 +1215,49 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
         experiment_id = entities.get("experiment_id")
         experiment_name = entities.get("experiment_name")
         run_names = entities.get("run_names", [])
-        
+
         if not run_names or not isinstance(run_names, list) or len(run_names) == 0:
             parsed_response["confirmation"] = "needs_clarification"
             parsed_response["message"] = "Please provide a list of run names to create."
             return {"assistant_response": parsed_response}
-            
+
         # Resolve experiment ID if only name provided
         if not experiment_id and experiment_name:
             found_id = get_experiment_id_by_name(experiment_name)
             if not found_id:
                 parsed_response["confirmation"] = "needs_clarification"
-                parsed_response["message"] = f"No experiment found named '{experiment_name}'. Please create it first or provide an existing ID."
+                parsed_response["message"] = (
+                    f"No experiment found named '{experiment_name}'. Please create it first or provide an existing ID."
+                )
                 return {"assistant_response": parsed_response}
             experiment_id = found_id
-        
+
         if not experiment_id:
             parsed_response["confirmation"] = "needs_clarification"
-            parsed_response["message"] = "Please provide either an experiment ID or name to create runs in."
+            parsed_response["message"] = (
+                "Please provide either an experiment ID or name to create runs in."
+            )
         else:
             # Get experiment name for context
             exp_name = "Unknown"
             exp_success, _, exp_details = get_experiment_by_id(experiment_id)
             if exp_success:
                 exp_name = exp_details.get("name", "Unknown")
-            
+
             results = batch_create_runs(experiment_id, run_names)
-            
+
             # Count successful creations
             successful = sum(1 for r in results if r["success"])
-            
+
             if successful == len(run_names):
                 run_ids = [r["run_id"] for r in results if r["success"]]
-                run_list = "\n".join([f"• {name} (ID: {id[:8]}...{id[-4:]})" for name, id in zip(run_names, run_ids) if id])
+                run_list = "\n".join(
+                    [
+                        f"• {name} (ID: {id[:8]}...{id[-4:]})"
+                        for name, id in zip(run_names, run_ids)
+                        if id
+                    ]
+                )
                 parsed_response["message"] = (
                     f"✅ Successfully created all {len(run_names)} runs in experiment '{exp_name}':\n\n{run_list}"
                 )
@@ -1141,18 +1269,20 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                 # Create a list of successful and failed creations
                 success_list = []
                 failed_list = []
-                
+
                 for result in results:
                     name = result["run_name"]
                     if result["success"]:
                         run_id = result["run_id"]
-                        success_list.append(f"• {name} (ID: {run_id[:8]}...{run_id[-4:]})")
+                        success_list.append(
+                            f"• {name} (ID: {run_id[:8]}...{run_id[-4:]})"
+                        )
                     else:
                         failed_list.append(f"• {name} (Error: {result['message']})")
-                
+
                 success_text = "\n".join(success_list)
                 failed_text = "\n".join(failed_list)
-                
+
                 parsed_response["message"] = (
                     f"⚠️ Created {successful} out of {len(run_names)} runs in experiment '{exp_name}'.\n\n"
                     f"Successful:\n{success_text}\n\n"
@@ -1160,7 +1290,9 @@ When the user wants to log a parameter, you must use "param_key" and "param_valu
                 )
             else:
                 parsed_response["confirmation"] = "needs_clarification"
-                parsed_response["message"] = f"❌ Failed to create any runs in experiment '{exp_name}'."
-    
+                parsed_response["message"] = (
+                    f"❌ Failed to create any runs in experiment '{exp_name}'."
+                )
+
     # Return the final response
     return {"assistant_response": parsed_response}

@@ -375,6 +375,7 @@ if not st.session_state.invitation_valid:
 
         # Add "Get Invitation Code" button for localhost only
         if is_localhost and st.session_state.backend_status:
+            # if st.session_state.backend_status:
             if st.button("Get Invitation Code"):
                 invitation = generate_dev_invitation()
                 st.info(f"Development Invitation Code: **{invitation}**")

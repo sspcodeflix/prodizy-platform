@@ -1,0 +1,18 @@
+[Unit]
+Description=Prodizy Platform FastAPI Backend
+After=network.target
+Wants=network-online.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/prodizy-platform/backend
+ExecStart=/bin/bash -c 'cd /opt/prodizy-platform && /opt/prodizy-platform/backend/venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 5003 --workers 4'
+Restart=always
+RestartSec=5
+Environment="PATH=/opt/prodizy-platform/backend/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/opt/prodizy-platform/backend/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,29 @@
+[Unit]
+Description=MLflow Tracking Server
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/opt/mlflow
+# Start MLflow with Gunicorn and define DB + Artifacts storage
+ExecStart=/opt/mlflow/venv/bin/gunicorn \
+    --workers 4 \
+    --bind 127.0.0.1:5000 \
+    --timeout 120 \
+    --chdir /opt/mlflow \
+    "mlflow.server:app" \
+    --log-level debug \
+    --access-logfile /var/log/mlflow/access.log \
+    --error-logfile /var/log/mlflow/error.log \
+    --env BACKEND_STORE_URI="sqlite:////tmp/mlflow.db" \
+    --env DEFAULT_ARTIFACT_ROOT="/var/artifacts"
+
+Restart=always
+RestartSec=5
+
+Environment="PATH=/opt/mlflow/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="BACKEND_STORE_URI=sqlite:////tmp/mlflow.db"
+Environment="DEFAULT_ARTIFACT_ROOT=/var/artifacts"
+
+[Install]
+WantedBy=multi-user.target
